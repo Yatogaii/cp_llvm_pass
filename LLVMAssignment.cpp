@@ -81,7 +81,7 @@ InputFilename(cl::Positional,
 
 int main(int argc, char **argv) {
     const char *c[2];
-    std::string s("/home/black/llvm-pass/bc/test");
+    std::string s("/root/assign2/llvm-pass/bc/test");
     if (argc == 1) {
         std::string t;
         std::cout << "请输入测试编号：";
