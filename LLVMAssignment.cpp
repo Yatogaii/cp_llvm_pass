@@ -29,6 +29,7 @@
 #include <llvm/Bitcode/BitcodeReader.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
 
+#include <iostream>
 
 using namespace llvm;
 static ManagedStatic<LLVMContext> GlobalContext;
@@ -79,12 +80,25 @@ InputFilename(cl::Positional,
 
 
 int main(int argc, char **argv) {
+    const char *c[2];
+    std::string s("/home/black/llvm-pass/bc/test");
+    if (argc == 1) {
+        std::string t;
+        std::cout << "请输入测试编号：";
+        std::cin >> t;
+        s.append(t).append(".ll");
+        c[1] = s.c_str();
+        // Parse the command line to read the Inputfilename
+        cl::ParseCommandLineOptions(2, c,
+                                    "FuncPtrPass \n My first LLVM too which does not do much.\n");
+    } else {
+        // Parse the command line to read the Inputfilename
+        cl::ParseCommandLineOptions(argc, argv,
+                                    "FuncPtrPass \n My first LLVM too which does not do much.\n");
+    }
+
    LLVMContext &Context = getGlobalContext();
    SMDiagnostic Err;
-   // Parse the command line to read the Inputfilename
-   cl::ParseCommandLineOptions(argc, argv,
-                              "FuncPtrPass \n My first LLVM too which does not do much.\n");
-
 
    // Load the input module
    std::unique_ptr<Module> M = parseIRFile(InputFilename, Err, Context);
