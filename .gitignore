@@ -2,4 +2,5 @@ build/
 .idea/
 cmake-build-debug/
 cmake-build-debug-llvm_docker_vmware/
+cmake-build-debug-llvm_docker_aliyun/
 LLVMAs.*

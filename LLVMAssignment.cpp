@@ -34,6 +34,12 @@
 
 #include <iostream>
 
+#ifdef _DEBUG
+#define LINE cnt
+#else
+#define LINE I.getDebugLoc().getLine()
+#endif
+
 using namespace llvm;
 static ManagedStatic<LLVMContext> GlobalContext;
 static LLVMContext &getGlobalContext() { return *GlobalContext; }
@@ -76,15 +82,21 @@ struct FuncPtrPass : public ModulePass {
           if (auto *incomingPHINode = dyn_cast<PHINode>(incomingValue)) {
               // 如果前驱值是另一个PHINode，递归处理
               handlePHINode(incomingPHINode, line);
-          } else if (auto *inst = dyn_cast<Instruction>(incomingValue)) {
-              // 如果前驱值是一个指令，处理这个指令
-              // ...
-          } else if (auto *arg = dyn_cast<Argument>(incomingValue)) {
-              // 如果前驱值是一个参数，处理这个参数
-              // ...
+//          } else if (auto *inst = dyn_cast<Instruction>(incomingValue)) {
+//              // 如果前驱值是一个指令，处理这个指令
+//              // ...
+//          } else if (auto *arg = dyn_cast<Argument>(incomingValue)) {
+//              // 如果前驱值是一个参数，处理这个参数
+//              // ...
           } else if (auto *func = dyn_cast<Function>(incomingValue)){
               // 前驱是一个函数
               lineToFunctionsMap[line].insert(func->getName());
+          } else if (auto *arg = dyn_cast<Argument>(incomingValue)) {
+              handleArgument(arg, line);
+          } else {
+              /// test10.ll :%s_fptr.0 = phi i32 (i32, i32)* [ %a_fptr, %if.then ], [ %b_fptr, %if.else ], !dbg !24
+              errs() << "Unable handler PHINode :" << "\n";
+              phiNode->dump();
           }
       }
   }
@@ -101,7 +113,7 @@ struct FuncPtrPass : public ModulePass {
             Value *operand = callInst->getArgOperand(argIdx);
             handleValue(operand, line);
         } else {
-            errs() << "Unhandled user of parent function of argument: ";
+            errs() << "Unhandled User: ";
             user->dump();
         }
     }
@@ -114,16 +126,21 @@ struct FuncPtrPass : public ModulePass {
           handleArgument(argument, line);
       }else {
           /// test04.ll : i32 (i32, i32)* %a_fptr 是参数类型
-          errs() << "Unsupport format : ";
+          errs() << "Unsupport value: ";
           value->dump();
       }
   }
 
   bool runOnModule(Module &M) override {
-
+      int cnt = 0;
       for (Function &F : M) {
           for (BasicBlock &BB : F) {
               for (Instruction &I : BB) {
+                  /// test10.ll 少这一行
+                  /// 18  %s_fptr.0 = phi i32 (i32, i32)* [ %a_fptr, %if.then ], [ %b_fptr, %if.else ], !dbg !24
+
+                  //errs() << cnt ++;
+                  //I.dump();
                   if (auto *callInst = dyn_cast<CallInst>(&I)) {
                       // 可以直接换成 Function 的
                       if (Function *calledFunction = callInst->getCalledFunction()) {
@@ -131,14 +148,13 @@ struct FuncPtrPass : public ModulePass {
                            if (!calledFunction->isIntrinsic()) {
                               // 这里获取不到在 if 里面赋值的函数指针，需要处理 PHINode
                               if (const DebugLoc &debugInfo = I.getDebugLoc()) { // Here the debug information is obtained
-                                  unsigned line = debugInfo.getLine();
-                                  lineToFunctionsMap[line].insert(calledFunction->getName().str());
+                                  lineToFunctionsMap[LINE].insert(calledFunction->getName().str());
                               }
                            }
                       } else { // 不可以直接换成 Function 的
                           // 获取操作数
                           const Value *value = callInst->getCalledOperand();
-                          handleValue(value, I.getDebugLoc().getLine());
+                          handleValue(value, LINE);
 //                          if(auto* phiNode = dyn_cast<PHINode>(value)){
 //                              handlePHINode(phiNode, I.getDebugLoc().getLine());
 //                          } else if(auto* argument = dyn_cast<Argument>(value)) {
