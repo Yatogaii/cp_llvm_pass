@@ -62,25 +62,57 @@ struct FuncPtrPass : public ModulePass {
   static char ID; // Pass identification, replacement for typeid
   FuncPtrPass() : ModulePass(ID) {}
 
-  void printRes(){
+  std::map<unsigned, std::set<std::string>> lineToFunctionsMap;
 
+    /// PHINode 处理函数，可能有递归
+  /// https://llvm.org/doxygen/classllvm_1_1PHINode.html
+  void handlePHINode(const PHINode *phiNode, int line) {
+      // 遍历PHINode的所有可能的前驱值
+      for (unsigned i = 0; i < phiNode->getNumIncomingValues(); ++i) {
+          Value *incomingValue = phiNode->getIncomingValue(i);
+          BasicBlock *incomingBlock = phiNode->getIncomingBlock(i);
+
+          // 处理每个前驱值
+          if (auto *incomingPHINode = dyn_cast<PHINode>(incomingValue)) {
+              // 如果前驱值是另一个PHINode，递归处理
+              handlePHINode(incomingPHINode, line);
+          } else if (auto *inst = dyn_cast<Instruction>(incomingValue)) {
+              // 如果前驱值是一个指令，处理这个指令
+              // ...
+          } else if (auto *arg = dyn_cast<Argument>(incomingValue)) {
+              // 如果前驱值是一个参数，处理这个参数
+              // ...
+          } else if (auto *func = dyn_cast<Function>(incomingValue)){
+              // 前驱是一个函数
+              lineToFunctionsMap[line].insert(func->getName());
+          }
+      }
   }
 
   bool runOnModule(Module &M) override {
-      std::map<unsigned, std::set<std::string>> lineToFunctionsMap;
 
       for (Function &F : M) {
           for (BasicBlock &BB : F) {
               for (Instruction &I : BB) {
                   if (auto *callInst = dyn_cast<CallInst>(&I)) {
+                      // 不需要考虑 PHINode
                       if (Function *calledFunction = callInst->getCalledFunction()) {
-                          // Ignore intrinsic functions
+                          // Ignore intrinsic functions, return true when function start with llvm
                           if (!calledFunction->isIntrinsic()) {
+                              // 这里获取不到在 if 里面赋值的函数指针，需要处理 PHINode
                               if (const DebugLoc &debugInfo = I.getDebugLoc()) { // Here the debug information is obtained
                                   unsigned line = debugInfo.getLine();
                                   lineToFunctionsMap[line].insert(calledFunction->getName().str());
                               }
                           }
+                      } else { // 有 PHINode 的情况。
+                          const Value *value = callInst->getCalledOperand();
+                          if(auto* phiNode = dyn_cast<PHINode>(value)){
+                              handlePHINode(phiNode, I.getDebugLoc().getLine());
+                          } else {
+                              errs() << "Unable handle a non-phinode node \n";
+                          }
+
                       }
                   }
               }
