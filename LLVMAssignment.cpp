@@ -15,6 +15,9 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Instructions.h>
+#include "llvm/IR/DebugInfo.h"
+#include "llvm/Pass.h"
 #include <llvm/Support/SourceMgr.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/ToolOutputFile.h>
@@ -59,13 +62,41 @@ struct FuncPtrPass : public ModulePass {
   static char ID; // Pass identification, replacement for typeid
   FuncPtrPass() : ModulePass(ID) {}
 
-  
+  void printRes(){
+
+  }
+
   bool runOnModule(Module &M) override {
-    errs() << "Hello: ";
-    errs().write_escaped(M.getName()) << '\n';
-    M.dump();
-    errs()<<"------------------------------\n";
-    return false;
+      std::map<unsigned, std::set<std::string>> lineToFunctionsMap;
+
+      for (Function &F : M) {
+          for (BasicBlock &BB : F) {
+              for (Instruction &I : BB) {
+                  if (auto *callInst = dyn_cast<CallInst>(&I)) {
+                      if (Function *calledFunction = callInst->getCalledFunction()) {
+                          // Ignore intrinsic functions
+                          if (!calledFunction->isIntrinsic()) {
+                              if (const DebugLoc &debugInfo = I.getDebugLoc()) { // Here the debug information is obtained
+                                  unsigned line = debugInfo.getLine();
+                                  lineToFunctionsMap[line].insert(calledFunction->getName().str());
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+
+      // Printing the gathered information
+      for (const auto &entry : lineToFunctionsMap) {
+          errs() << entry.first << " : ";
+          for (const auto &funcName : entry.second) {
+              errs() << funcName << ", ";
+          }
+          errs() << "\n";
+      }
+
+      return false;
   }
 };
 
@@ -81,7 +112,7 @@ InputFilename(cl::Positional,
 
 int main(int argc, char **argv) {
     const char *c[2];
-    std::string s("/root/assign2/llvm-pass/bc/test");
+    std::string s("/root/assign2/bc/test");
     if (argc == 1) {
         std::string t;
         std::cout << "请输入测试编号：";
