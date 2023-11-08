@@ -89,29 +89,65 @@ struct FuncPtrPass : public ModulePass {
       }
   }
 
+  // 处理 Argument 类型的 Value
+  // 主要用刀了 Use 和 User 两个类
+  void handleArgument(const Argument* arg, int line){
+    const unsigned int argIdx = arg->getArgNo(); // 形参在函数参数中的位置
+    // 获取该参数所在函数的所有调用者
+    const Function* parent = arg->getParent();
+    for(const User* user: parent->users()){
+        // 获取参数所在函数的调用
+        if (const CallInst *callInst = dyn_cast<CallInst>(user)) {
+            Value *operand = callInst->getArgOperand(argIdx);
+            handleValue(operand, line);
+        } else {
+            errs() << "Unhandled user of parent function of argument: ";
+            user->dump();
+        }
+    }
+  }
+
+  void handleValue(const Value* value, int line){
+      if(auto* phiNode = dyn_cast<PHINode>(value)){
+          handlePHINode(phiNode, line);
+      } else if(auto* argument = dyn_cast<Argument>(value)) {
+          handleArgument(argument, line);
+      }else {
+          /// test04.ll : i32 (i32, i32)* %a_fptr 是参数类型
+          errs() << "Unsupport format : ";
+          value->dump();
+      }
+  }
+
   bool runOnModule(Module &M) override {
 
       for (Function &F : M) {
           for (BasicBlock &BB : F) {
               for (Instruction &I : BB) {
                   if (auto *callInst = dyn_cast<CallInst>(&I)) {
-                      // 不需要考虑 PHINode
+                      // 可以直接换成 Function 的
                       if (Function *calledFunction = callInst->getCalledFunction()) {
                           // Ignore intrinsic functions, return true when function start with llvm
-                          if (!calledFunction->isIntrinsic()) {
+                           if (!calledFunction->isIntrinsic()) {
                               // 这里获取不到在 if 里面赋值的函数指针，需要处理 PHINode
                               if (const DebugLoc &debugInfo = I.getDebugLoc()) { // Here the debug information is obtained
                                   unsigned line = debugInfo.getLine();
                                   lineToFunctionsMap[line].insert(calledFunction->getName().str());
                               }
-                          }
-                      } else { // 有 PHINode 的情况。
+                           }
+                      } else { // 不可以直接换成 Function 的
+                          // 获取操作数
                           const Value *value = callInst->getCalledOperand();
-                          if(auto* phiNode = dyn_cast<PHINode>(value)){
-                              handlePHINode(phiNode, I.getDebugLoc().getLine());
-                          } else {
-                              errs() << "Unable handle a non-phinode node \n";
-                          }
+                          handleValue(value, I.getDebugLoc().getLine());
+//                          if(auto* phiNode = dyn_cast<PHINode>(value)){
+//                              handlePHINode(phiNode, I.getDebugLoc().getLine());
+//                          } else if(auto* argument = dyn_cast<Argument>(value)) {
+//                              handleArgument(argument, I.getDebugLoc().getLine());
+//                          }else {
+//                              /// test04.ll : i32 (i32, i32)* %a_fptr 是参数类型
+//                              errs() << "Unsupport format : ";
+//                              value->dump();
+//                          }
 
                       }
                   }
