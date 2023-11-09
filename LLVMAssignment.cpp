@@ -15,6 +15,7 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/IR/LLVMContext.h>
+#include "llvm/IR/InstIterator.h"
 #include <llvm/IR/Instructions.h>
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/Pass.h"
@@ -76,8 +77,6 @@ struct FuncPtrPass : public ModulePass {
       // 遍历PHINode的所有可能的前驱值
       for (unsigned i = 0; i < phiNode->getNumIncomingValues(); ++i) {
           Value *incomingValue = phiNode->getIncomingValue(i);
-          BasicBlock *incomingBlock = phiNode->getIncomingBlock(i);
-
           handleValue(incomingValue, line);
           continue;
             // ---------------------------------
@@ -106,6 +105,11 @@ struct FuncPtrPass : public ModulePass {
       }
   }
 
+  void handleReturn(const ReturnInst* ret, int line){
+      handleValue(ret->getReturnValue(), line);
+  }
+
+
   // 处理 Argument 类型的 Value
   // 主要用刀了 Use 和 User 两个类
   void handleArgument(const Argument* arg, int line){
@@ -117,7 +121,14 @@ struct FuncPtrPass : public ModulePass {
         if (const CallInst *callInst = dyn_cast<CallInst>(user)) {
             Value *operand = callInst->getArgOperand(argIdx);
             handleValue(operand, line);
-        } else {
+        } else if (const PHINode *phiNode = dyn_cast<PHINode>(user)) {
+            for (const User *phiUser: phiNode->users()) {
+                if (const CallInst *outerCallInst = dyn_cast<CallInst>(phiUser)) {
+                    Value *operand = outerCallInst->getArgOperand(argIdx);
+                    handleValue(operand, line);
+                }
+            }
+        }else {
             errs() << "Unhandled User: ";
             user->dump();
         }
@@ -144,6 +155,8 @@ struct FuncPtrPass : public ModulePass {
               // Otherwise, it's a regular function call
               handleCall(call, line);
           }
+      } else if (const ReturnInst *returnInst = dyn_cast<ReturnInst>(value)) {
+          handleReturn(returnInst, line);
       } else if(auto* func = dyn_cast<Function>(value)) {
           handleFunc(func, line);
       //} else if(auto* ret = dyn_cast<ReturnInst>(value)) {
@@ -166,6 +179,9 @@ struct FuncPtrPass : public ModulePass {
                   if (const ReturnInst *retInst = dyn_cast<ReturnInst>(&i)) {
                       const Value *retValue = retInst->getReturnValue();
                       handleValue(retValue, line);
+                  } else {
+                      errs() << "unhandled funcPtrRet:";
+                      call->dump();
                   }
               }
           }
@@ -196,6 +212,20 @@ struct FuncPtrPass : public ModulePass {
       if (!func->isIntrinsic()) {
           // 这里获取不到在 if 里面赋值的函数指针，需要处理 PHINode
           lineToFunctionsMap[line].insert(func->getName().str());
+          /// test13.ll call 里面又有其他的call，比如
+          /// %call = call i32 (i32, i32)* %2(i32 %3, i32 %4, i32 (i32, i32)* %5, i32 (i32, i32)* %6), !dbg !86
+      }
+  }
+
+  /// test13.ll
+  void handleFuntionReturnStatement(const Function* func, int line){
+      for (const BasicBlock &bb : *func) {
+          for (const Instruction &i : bb) {
+              if (const ReturnInst *retInst = dyn_cast<ReturnInst>(&i)) {
+                  const Value *retValue = retInst->getReturnValue();
+                  handleValue(retValue, line);
+              }
+          }
       }
   }
 
@@ -206,6 +236,11 @@ struct FuncPtrPass : public ModulePass {
       // 可以直接换成 Function 的
       if (Function *calledFunction = call->getCalledFunction()) {
           handleFunc(calledFunction, line);
+          for (inst_iterator it = inst_begin(calledFunction), et = inst_end(calledFunction); it != et; ++it) {
+              if (const ReturnInst *returnInst = dyn_cast<ReturnInst>(&*it)) {
+                  handleValue(returnInst, line);
+              }
+          }
       } else { // 不可以直接换成 Function 的
           // 获取操作数
           /// test11.ll 流程：
@@ -214,8 +249,35 @@ struct FuncPtrPass : public ModulePass {
           /// 3. handleValue 发现 Operand 是一个直接调用
           /// 4. 记录答案
           /// 错在了 Operand 虽然是一个直接调用，但是调用的是 foo 返回的函数指针 plus。
-          const Value *value = call->getCalledOperand();
-          handleValue(value, line);
+          /// test13.ll 这里不能直接调用 handleValue，
+          /// handleValue 识别不了嵌套CallInst 的情况。
+          const Value *operand = call->getCalledOperand();
+          if (const CallInst *innerCallInst = dyn_cast<CallInst>(operand)) {
+              // CallInst 的内部嵌套 CallInst，说明实际调用的是 Inner CallInst
+              // 的返回值，而不是 Inner CallInst 自身。
+              if (const Function *calledFunc = innerCallInst->getCalledFunction()) {
+                  handleFuntionReturnStatement(calledFunc, line);
+              } else { // 这里是 innerFunction 又是间接调用的情况
+                  const Value *innerCallInstOperand = innerCallInst->getCalledOperand();
+                  if (const PHINode *phiNode =
+                          dyn_cast<PHINode>(innerCallInstOperand)) {
+                      for (const Value *income_func : phiNode->incoming_values()) {
+                          if (const Function *calledFunc =
+                                  dyn_cast<Function>(income_func)) {
+                              handleFuntionReturnStatement(calledFunc, line);
+                          }
+                      }
+                  }
+              }
+          } else if (const PHINode *phiNode = dyn_cast<PHINode>(operand)) {
+              handlePHINode(phiNode, line);
+          } else if (const Argument *arg = dyn_cast<Argument>(operand)) {
+              handleArgument(arg, line);
+          } else {
+              operand->dump();
+          }
+
+          // handleValue(value, line);
       }
   }
 
