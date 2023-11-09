@@ -78,6 +78,9 @@ struct FuncPtrPass : public ModulePass {
           Value *incomingValue = phiNode->getIncomingValue(i);
           BasicBlock *incomingBlock = phiNode->getIncomingBlock(i);
 
+          handleValue(incomingValue, line);
+          continue;
+            // ---------------------------------
           // 处理每个前驱值
           if (auto *incomingPHINode = dyn_cast<PHINode>(incomingValue)) {
               // 如果前驱值是另一个PHINode，递归处理
@@ -92,6 +95,8 @@ struct FuncPtrPass : public ModulePass {
               // 前驱是一个函数
               lineToFunctionsMap[line].insert(func->getName());
           } else if (auto *arg = dyn_cast<Argument>(incomingValue)) {
+              handleArgument(arg, line);
+          } else if (auto *call = dyn_cast<CallInst>(incomingValue)) {
               handleArgument(arg, line);
           } else {
               /// test10.ll :%s_fptr.0 = phi i32 (i32, i32)* [ %a_fptr, %if.then ], [ %b_fptr, %if.else ], !dbg !24
