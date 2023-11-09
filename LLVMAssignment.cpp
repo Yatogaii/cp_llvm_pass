@@ -236,11 +236,6 @@ struct FuncPtrPass : public ModulePass {
       // 可以直接换成 Function 的
       if (Function *calledFunction = call->getCalledFunction()) {
           handleFunc(calledFunction, line);
-          for (inst_iterator it = inst_begin(calledFunction), et = inst_end(calledFunction); it != et; ++it) {
-              if (const ReturnInst *returnInst = dyn_cast<ReturnInst>(&*it)) {
-                  handleValue(returnInst, line);
-              }
-          }
       } else { // 不可以直接换成 Function 的
           // 获取操作数
           /// test11.ll 流程：
@@ -277,7 +272,7 @@ struct FuncPtrPass : public ModulePass {
               operand->dump();
           }
 
-          // handleValue(value, line);
+//          handleValue(operand, line);
       }
   }
 
