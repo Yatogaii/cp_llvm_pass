@@ -276,6 +276,7 @@ struct FuncPtrPass : public ModulePass {
       }
   }
 
+  /// test14.ll 会多一个 32: minuns 的输出
   bool runOnModule(Module &M) override {
       int cnt = 0;
       for (Function &F : M) {
