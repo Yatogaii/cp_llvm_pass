@@ -147,6 +147,7 @@ struct FuncPtrPass : public ModulePass {
       } else if(auto* call = dyn_cast<CallInst>(value)) {
           /// test11.ll 主要修改这个 if 里的逻辑
           /// 需要支持函数返回值为函数指针的情况
+          /// 比如 ret i32 (i32, i32)* %call, !dbg !20 里 getReturnVal 获得的就是 %call 他是一个函数指针
           // Check if the call returns a pointer to a function type
           if (call->getType()->isPointerTy() &&
               call->getType()->getPointerElementType()->isFunctionTy()) {
@@ -170,6 +171,8 @@ struct FuncPtrPass : public ModulePass {
   /// test11.ll 函数指针为一个函数返回值的情况，否则如果进入到 handleCall 会获得错误结果。
   /// 为什么不用遍历 User 来处理，而是遍历嵌套 CallInst ：
   /// 函数指针被返回并立即用于另一个 CallInst，分析应该跟踪到这个立即的 CallInst。
+  /// test16.ll should output minus but get plus
+  /// 我怎么觉得就是 plus 呢，答案是不是错了
   void handleFuncPtrRet(const CallInst* call, int line){
       if (const Function *calledFunc = call->getCalledFunction()) {
           // CallInst 的内部嵌套 CallInst，说明实际调用的是 Inner CallInst
@@ -178,10 +181,12 @@ struct FuncPtrPass : public ModulePass {
               for (const Instruction &i : bb) {
                   if (const ReturnInst *retInst = dyn_cast<ReturnInst>(&i)) {
                       const Value *retValue = retInst->getReturnValue();
+                      errs() << "handled funcPtrRet:::";
+                      i.dump();
                       handleValue(retValue, line);
-                  } else {
-                      errs() << "unhandled funcPtrRet:";
-                      call->dump();
+//                  } else {
+//                      errs() << "unhandled funcPtrRet:";
+//                      i.dump();
                   }
               }
           }
@@ -229,14 +234,16 @@ struct FuncPtrPass : public ModulePass {
       }
   }
 
-  // 独立出 handleCall 处理 call 前套的问题。
+  /// 核心函数
+  /// 独立出 handleCall 处理 call 嵌套的问题。
   /// test11.ll 这里 handleCall 会输出错误的结果，猜测是返回值的问题
   /// handleCall -> handleValue -> handleCall
   void handleCall(const CallInst* call, int line){
       // 可以直接换成 Function 的
+      /// test16.ll: %call1 = call i32 %call(i32 %op1, i32 %op2), !dbg !27
       if (Function *calledFunction = call->getCalledFunction()) {
           handleFunc(calledFunction, line);
-      } else { // 不可以直接换成 Function 的
+      } else { // 不可以直接换成 Function 的，就必须分析Operand进一步分析
           // 获取操作数
           /// test11.ll 流程：
           /// 1. 先获取 Call，发现不是直接调用
@@ -246,8 +253,15 @@ struct FuncPtrPass : public ModulePass {
           /// 错在了 Operand 虽然是一个直接调用，但是调用的是 foo 返回的函数指针 plus。
           /// test13.ll 这里不能直接调用 handleValue，
           /// handleValue 识别不了嵌套CallInst 的情况。
+          /// 这里调用 handleValue 无限递归。
           const Value *operand = call->getCalledOperand();
           if (const CallInst *innerCallInst = dyn_cast<CallInst>(operand)) {
+              /// test16.ll: 嵌套 Call 的情况:   %call1 = call i32 %call(i32 %op1, i32 %op2), !dbg !27
+              errs() << "嵌套 Call 的情况: ";
+              call->dump();
+              errs() << "inner: ";
+              innerCallInst->dump();
+              errs() << "\n";
               // CallInst 的内部嵌套 CallInst，说明实际调用的是 Inner CallInst
               // 的返回值，而不是 Inner CallInst 自身。
               if (const Function *calledFunc = innerCallInst->getCalledFunction()) {
@@ -285,8 +299,10 @@ struct FuncPtrPass : public ModulePass {
                   /// test10.ll 少这一行
                   /// 18  %s_fptr.0 = phi i32 (i32, i32)* [ %a_fptr, %if.then ], [ %b_fptr, %if.else ], !dbg !24
 
-                  //errs() << cnt ++;
-                  //I.dump();
+                  errs() << cnt ++;
+                  I.dump();
+
+                  // 由于是打印调用的函数名，所以只处理 Call
                   if (auto *callInst = dyn_cast<CallInst>(&I)) {
                       handleCall(callInst, I.getDebugLoc().getLine());
                   }
@@ -294,9 +310,9 @@ struct FuncPtrPass : public ModulePass {
           }
       }
 
-      // Printing the gathered information
+      // 打印结果
       for (const auto &entry : lineToFunctionsMap) {
-          errs() << entry.first << " : ";
+          errs() << entry.first << ": ";
           for (const auto &funcName : entry.second) {
               errs() << funcName << ", ";
           }
