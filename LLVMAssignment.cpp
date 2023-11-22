@@ -97,7 +97,7 @@ struct FuncPtrPass : public ModulePass {
     for(const User* user: parent->users()){
         // 获取参数所在函数的调用
         if (const CallInst *callInst = dyn_cast<CallInst>(user)) {
-            user->dump();
+            //user->dump();
             // pasted from https://github.com/ChinaNuke/llvm-pass/blob/master/LLVMAssignment.cpp
             const Function *calledFunction = callInst->getCalledFunction();
             if (calledFunction == parent) {
@@ -139,8 +139,8 @@ struct FuncPtrPass : public ModulePass {
                 }
             }
         }else {
-            errs() << "Unhandled User: ";
-            user->dump();
+            //errs() << "Unhandled User: ";
+            //user->dump();
         }
     }
   }
@@ -173,8 +173,8 @@ struct FuncPtrPass : public ModulePass {
       //} else if(auto* ret = dyn_cast<ReturnInst>(value)) {
      //     handleRet(ret, line);
       } else {
-          errs() << "Unsupport value: ";
-          value->dump();
+//          errs() << "Unsupport value: ";
+//          value->dump();
       }
   }
 
@@ -193,8 +193,8 @@ struct FuncPtrPass : public ModulePass {
               for (const Instruction &i : bb) {
                   if (const ReturnInst *retInst = dyn_cast<ReturnInst>(&i)) {
                       const Value *retValue = retInst->getReturnValue();
-                      errs() << "handled funcPtrRet:::";
-                      i.dump();
+//                      errs() << "handled funcPtrRet:::";
+//                      i.dump();
                       handleValue(retValue, line);
 //                  } else {
 //                      errs() << "unhandled funcPtrRet:";
@@ -204,14 +204,14 @@ struct FuncPtrPass : public ModulePass {
           }
       } else if(const CallInst* innerCall = dyn_cast<CallInst>(operand)){
           /// test17.ll 多层嵌套, 没有触发
-          errs() << "多层嵌套触发";
+//          errs() << "多层嵌套触发";
       } else {
           /// test17.ll
           /// %call = call i32 (i32, i32)* %goo_ptr(i32 %a, i32 %b, i32 (i32, i32)* %b_fptr, i32 (i32, i32)* %a_fptr), !dbg !23
-          errs() << "handleFuncPtrRet unhandled:" ;
-          call->dump();
-          errs() << "Operand: ";
-          operand->dump();
+//          errs() << "handleFuncPtrRet unhandled:" ;
+//          call->dump();
+//          errs() << "Operand: ";
+//          operand->dump();
           // test17.ll 在这里分析 argument ?
           handleValue(operand, line);
       }
@@ -240,7 +240,7 @@ struct FuncPtrPass : public ModulePass {
       // Ignore intrinsic functions, return true when function start with llvm
       if (!func->isIntrinsic()) {
           // 这里获取不到在 if 里面赋值的函数指针，需要处理 PHINode
-          func->dump();
+          //func->dump();
           /// 这里不能直接加入到结果集，他有可能执行的是返回的函数？
           auto* type = func->getReturnType();
           if(isIndirect && type->isPointerTy() && type->getPointerElementType()->isFunctionTy()){
@@ -251,8 +251,8 @@ struct FuncPtrPass : public ModulePass {
                   for (const Instruction &i : bb) {
                       if (const ReturnInst *retInst = dyn_cast<ReturnInst>(&i)) {
                           const Value *retValue = retInst->getReturnValue();
-                          errs() << "handled funcPtrRet:::";
-                          i.dump();
+//                          errs() << "handled funcPtrRet:::";
+//                          i.dump();
                           handleValue(retValue, line);
                       }
                   }
@@ -272,8 +272,8 @@ struct FuncPtrPass : public ModulePass {
           for (const Instruction &i : bb) {
               if (const ReturnInst *retInst = dyn_cast<ReturnInst>(&i)) {
                   const Value *retValue = retInst->getReturnValue();
-                  errs() << "handle Ret: ";
-                  retInst->dump();
+//                  errs() << "handle Ret: ";
+//                  retInst->dump();
                   handleValue(retValue, line);
               }
           }
@@ -305,11 +305,11 @@ struct FuncPtrPass : public ModulePass {
           if (const CallInst *innerCallInst = dyn_cast<CallInst>(operand)) {
               isIndirect = true;
               /// test16.ll: 嵌套 Call 的情况:   %call1 = call i32 %call(i32 %op1, i32 %op2), !dbg !27
-              errs() << "嵌套 Call 的情况: ";
-              call->dump();
-              errs() << "inner: ";
-              innerCallInst->dump();
-              errs() << "\n";
+//              errs() << "嵌套 Call 的情况: ";
+//              call->dump();
+//              errs() << "inner: ";
+//              innerCallInst->dump();
+//              errs() << "\n";
 
               /// 内部call可以直接获取函数
               if (const Function *calledFunc = innerCallInst->getCalledFunction()) {
@@ -336,7 +336,7 @@ struct FuncPtrPass : public ModulePass {
           } else if (const Argument *arg = dyn_cast<Argument>(operand)) {
               handleArgument(arg, line);
           } else {
-              operand->dump();
+              //operand->dump();
           }
 
 //          handleValue(operand, line);
@@ -352,8 +352,8 @@ struct FuncPtrPass : public ModulePass {
                   /// test10.ll 少这一行
                   /// 18  %s_fptr.0 = phi i32 (i32, i32)* [ %a_fptr, %if.then ], [ %b_fptr, %if.else ], !dbg !24
 
-                  errs() << cnt ++;
-                  I.dump();
+//                  errs() << cnt ++;
+//                  I.dump();
 
                   // 由于是打印调用的函数名，所以只处理 Call
                   if (auto *callInst = dyn_cast<CallInst>(&I)) {

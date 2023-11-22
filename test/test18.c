@@ -13,7 +13,6 @@ int (*foo(int a, int b, int (*a_fptr)(int, int), int(*b_fptr)(int, int) ))(int, 
 int (*clever(int a, int b, int (*a_fptr)(int, int), int(*b_fptr)(int, int) ))(int, int) {
    return foo(a,b,a_fptr,b_fptr);
 }
-
 int (*clever1(int (* (*goo_ptr)(int, int, int (*)(int, int), int(*)(int, int)))(int, int), int a, int b, int (*a_fptr)(int, int), int(*b_fptr)(int, int) ))(int, int) {
    return goo_ptr(a,b,b_fptr,a_fptr);
 }
